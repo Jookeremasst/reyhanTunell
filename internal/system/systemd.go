@@ -14,7 +14,10 @@ func DaemonReload() error {
 }
 
 func EnableStart(service string) error {
-	if err := Run("systemctl", "enable", "--now", service); err != nil { return err }
+	if err := Run("systemctl", "enable", "--now", service); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -39,7 +42,17 @@ func ServiceName(id string) string {
 	return "reyhanTunell-" + id + ".service"
 }
 
-func Unit(id, user, host string, sshPort, localPort int, remoteHost string, remotePort int, keyPath string) string {
+// SSH Tunnel
+func Unit(
+	id string,
+	user string,
+	host string,
+	sshPort int,
+	localPort int,
+	remoteHost string,
+	remotePort int,
+	keyPath string,
+) string {
 	return fmt.Sprintf(`[Unit]
 Description=reyhanTunell SSH Tunnel %s
 After=network-online.target
@@ -54,5 +67,36 @@ RestartSec=3
 
 [Install]
 WantedBy=multi-user.target
-`, id, keyPath, sshPort, localPort, remoteHost, remotePort, user, host)
+`,
+		id,
+		keyPath,
+		sshPort,
+		localPort,
+		remoteHost,
+		remotePort,
+		user,
+		host,
+	)
+}
+
+// SOCKS5 Tunnel
+func SOCKS5Unit(id string) string {
+	return fmt.Sprintf(`[Unit]
+Description=reyhanTunell SOCKS5 Tunnel %s
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/local/bin/reyhanTunell socks5-run %s
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+`,
+		id,
+		id,
+	)
 }
