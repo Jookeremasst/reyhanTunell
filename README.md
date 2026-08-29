@@ -32,13 +32,6 @@ cd /
 sudo reyhanTunell
 ```
 
-or:
-
-```bash
-cd /tmp
-sudo reyhanTunell list
-```
-
 Existing configuration is preserved when the installer is run again.
 
 ## Uninstallation
@@ -69,6 +62,59 @@ sudo bash ./uninstall.sh --purge
 - `reyhanTunell remove <id>`
 - `reyhanTunell version`
 
+## API
+
+`reyhanTunell` includes a versioned local HTTP API for the future Laravel web panel.
+
+Start the API manually:
+
+```bash
+sudo reyhanTunell api
+```
+
+The default address is:
+
+```text
+127.0.0.1:8765
+```
+
+The API intentionally accepts loopback addresses only in this first version. It is designed for a Laravel panel running on the same server. A random bearer token is generated on first start and stored at:
+
+```text
+/etc/reyhanTunell/api.token
+```
+
+API endpoints:
+
+```text
+GET    /api/v1/health
+GET    /api/v1/tunnels
+POST   /api/v1/tunnels
+GET    /api/v1/tunnels/{id}
+PUT    /api/v1/tunnels/{id}
+DELETE /api/v1/tunnels/{id}
+POST   /api/v1/tunnels/{id}/start
+POST   /api/v1/tunnels/{id}/stop
+POST   /api/v1/tunnels/{id}/restart
+POST   /api/v1/tunnels/{id}/status
+POST   /api/v1/tunnels/{id}/logs
+```
+
+All endpoints except health require:
+
+```text
+Authorization: Bearer <api-token>
+```
+
+The API layer uses the Go core and system management packages. It does not access tunnel JSON files directly from Laravel. This keeps the core independent from the future web panel.
+
+## Providers
+
+Current providers:
+
+- SSH
+- SOCKS5
+
 The provider layout is designed so future providers such as WireGuard,
-OpenVPN, SOCKS5, and TLS-based transports can be added without changing
+OpenVPN, HTTP, and TLS-based transports can be added without changing
 the core tunnel storage and systemd management logic.
