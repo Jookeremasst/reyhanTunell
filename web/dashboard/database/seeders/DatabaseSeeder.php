@@ -10,17 +10,18 @@ class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
-        $email = env('DASHBOARD_ADMIN_EMAIL');
+        $username = env('DASHBOARD_ADMIN_USERNAME');
         $password = env('DASHBOARD_ADMIN_PASSWORD');
 
-        if (! $email || ! $password) {
-            throw new RuntimeException('DASHBOARD_ADMIN_EMAIL and DASHBOARD_ADMIN_PASSWORD must be set before seeding the dashboard administrator.');
+        if (! $username || ! $password) {
+            throw new RuntimeException('DASHBOARD_ADMIN_USERNAME and DASHBOARD_ADMIN_PASSWORD must be set before seeding the dashboard administrator.');
         }
 
         User::updateOrCreate(
-            ['email' => $email],
+            ['username' => $username],
             [
                 'name' => env('DASHBOARD_ADMIN_NAME', 'Administrator'),
+                'email' => env('DASHBOARD_ADMIN_EMAIL'),
                 'password' => $password,
             ]
         );
