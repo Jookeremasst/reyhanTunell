@@ -1,1 +1,0 @@
-// Frontend bootstrap for reyhanTunell.
