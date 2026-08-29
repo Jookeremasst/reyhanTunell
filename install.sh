@@ -9,6 +9,7 @@ TUNNEL_DIR="${CONFIG_DIR}/tunnels"
 LOG_DIR="/var/log/${APP_NAME}"
 DATA_DIR="/var/lib/${APP_NAME}"
 WEB_DASHBOARD_PORT="8000"
+WEB_SERVICE_NAME="${APP_NAME}-web.service"
 
 if [[ "${EUID}" -ne 0 ]]; then
     echo "Error: installer must be run as root."
@@ -114,23 +115,60 @@ fi
 echo "Building ${APP_NAME}..."
 cd "${SCRIPT_DIR}"
 go build -trimpath -ldflags "-s -w" -o "${BINARY_PATH}" .
-
 chmod 0755 "${BINARY_PATH}"
 
 mkdir -p "${TUNNEL_DIR}" "${DATA_DIR}" "${LOG_DIR}"
 chmod 0700 "${CONFIG_DIR}" "${TUNNEL_DIR}"
 chmod 0755 "${DATA_DIR}" "${LOG_DIR}"
 
+if [[ -f "${SCRIPT_DIR}/composer.json" ]] && command -v systemctl >/dev/null 2>&1; then
+    echo "Creating Web Dashboard service..."
+
+    # The dashboard service runs the standard Laravel development server for now.
+    # It is managed by systemd so it starts automatically after reboot.
+    cat > "/etc/systemd/system/${WEB_SERVICE_NAME}" <<EOF
+[Unit]
+Description=reyhanTunell Web Dashboard
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=${SCRIPT_DIR}
+ExecStart=/usr/bin/php artisan serve --host=0.0.0.0 --port=${WEB_DASHBOARD_PORT}
+Restart=on-failure
+RestartSec=3
+Environment=APP_ENV=production
+Environment=APP_DEBUG=false
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    systemctl daemon-reload
+    systemctl enable "${WEB_SERVICE_NAME}"
+    systemctl restart "${WEB_SERVICE_NAME}"
+
+    sleep 1
+    if systemctl is-active --quiet "${WEB_SERVICE_NAME}"; then
+        echo "Web Dashboard service is running."
+    else
+        echo "Warning: Web Dashboard service did not start."
+        echo "Check: systemctl status ${WEB_SERVICE_NAME}"
+        echo "Logs: journalctl -u ${WEB_SERVICE_NAME} -n 50 --no-pager"
+    fi
+fi
+
 if [[ -x "${BINARY_PATH}" ]]; then
     echo
-    echo "${APP_NAME} installed successfully."
+echo "${APP_NAME} installed successfully."
     echo "Binary: ${BINARY_PATH}"
     echo "Config: ${CONFIG_DIR}"
     if [[ -f "${SCRIPT_DIR}/composer.json" ]]; then
         echo "Web Dashboard: http://0.0.0.0:${WEB_DASHBOARD_PORT}"
+        echo "Web Dashboard service: ${WEB_SERVICE_NAME}"
     fi
     echo
-    echo "You can now run from any directory:"
+echo "You can now run from any directory:"
     echo "  sudo ${APP_NAME}"
     echo
     "${BINARY_PATH}" version
