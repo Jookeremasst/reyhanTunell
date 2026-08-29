@@ -11,6 +11,7 @@ LOG_DIR="/var/log/${APP_NAME}"
 DATA_DIR="/var/lib/${APP_NAME}"
 DASHBOARD_DIR="${SCRIPT_DIR}/web/dashboard"
 DASHBOARD_SESSION="${APP_NAME}-web"
+API_ADDRESS="127.0.0.1:8765"
 WEB_DASHBOARD_PORT=8000
 WEB_BASE_PATH=""
 WEB_USERNAME="admin"
@@ -73,6 +74,7 @@ set_env REYHAN_WEB_PORT "${WEB_DASHBOARD_PORT}"
 set_env WEB_BASE_PATH "${WEB_BASE_PATH}"
 set_env DASHBOARD_ADMIN_USERNAME "${WEB_USERNAME}"
 set_env DASHBOARD_ADMIN_PASSWORD "${WEB_PASSWORD}"
+set_env REYHANTUNELL_API_URL "http://${API_ADDRESS}"
 
 run_as_user() { if [[ "${INSTALL_USER}" == root ]]; then "$@"; else runuser -u "${INSTALL_USER}" -- "$@"; fi; }
 run_as_user composer install --no-dev --optimize-autoloader --no-interaction
@@ -99,6 +101,30 @@ chmod 0755 "${DATA_DIR}" "${LOG_DIR}"
 mkdir -p "/usr/local/lib/${APP_NAME}"
 install -m 0755 "${SCRIPT_DIR}/scripts/update.sh" "/usr/local/lib/${APP_NAME}/update.sh"
 
+# Core API service. It is loopback-only and independent from the Laravel dashboard.
+cat > "/etc/systemd/system/${APP_NAME}.service" <<EOF
+[Unit]
+Description=reyhanTunell Core API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=${BINARY_PATH} api ${API_ADDRESS}
+Restart=on-failure
+RestartSec=2
+User=root
+Group=root
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=${CONFIG_DIR} ${DATA_DIR} ${LOG_DIR}
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
 cat > /usr/local/bin/reyhanTunell-web-restart <<EOF
 #!/usr/bin/env bash
 set -e
@@ -112,8 +138,6 @@ echo "Web Dashboard restarted on port \${PORT}."
 EOF
 chmod 0755 /usr/local/bin/reyhanTunell-web-restart
 
-# Record the exact source commit used by this installation. This marker is
-# metadata only; tunnel configuration remains under /etc/reyhanTunell/tunnels.
 INSTALL_COMMIT=""
 if command -v git >/dev/null 2>&1 && git -C "${SCRIPT_DIR}" rev-parse --verify HEAD >/dev/null 2>&1; then
   INSTALL_COMMIT="$(git -C "${SCRIPT_DIR}" rev-parse HEAD)"
@@ -130,12 +154,20 @@ INSTALL_USER=${INSTALL_USER}
 INSTALL_DASHBOARD_DIR=${DASHBOARD_DIR}
 INSTALL_WEB_DASHBOARD_PORT=${WEB_DASHBOARD_PORT}
 INSTALL_DASHBOARD_SESSION=${DASHBOARD_SESSION}
+INSTALL_API_ADDRESS=${API_ADDRESS}
 INSTALL_VERSION=$(${BINARY_PATH} version | sed -n 's/.*v//p' | tail -n1)
 INSTALL_COMMIT=${INSTALL_COMMIT}
 EOF
 chmod 0600 "/etc/${APP_NAME}/install.env"
 
-if command -v systemctl >/dev/null 2>&1; then systemctl daemon-reload; fi
+systemctl daemon-reload
+systemctl enable --now "${APP_NAME}.service"
+
+if ! systemctl is-active --quiet "${APP_NAME}.service"; then
+  echo "Error: ${APP_NAME} API service failed to start."
+  systemctl --no-pager --full status "${APP_NAME}.service" || true
+  exit 1
+fi
 
 echo
 echo "${APP_NAME} installed successfully."
@@ -148,6 +180,8 @@ printf '%-20s %s\n' "Password" "${WEB_PASSWORD}"
 printf '%-20s %s\n' "WebBasePath" "${WEB_BASE_PATH}"
 printf '%-20s %s\n' "Dashboard URL" "http://127.0.0.1:${WEB_DASHBOARD_PORT}/${WEB_BASE_PATH}"
 echo
+echo "Core API: ${API_ADDRESS}"
+echo "Core API service: ${APP_NAME}.service"
 echo "Update command: sudo reyhanTunell update"
 echo "Restart command: reyhanTunell-web-restart"
 echo "Attach: tmux attach -t ${DASHBOARD_SESSION}"
