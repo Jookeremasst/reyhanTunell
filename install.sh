@@ -35,7 +35,7 @@ if ! id "${INSTALL_USER}" >/dev/null 2>&1; then INSTALL_USER=root; fi
 if command -v apt-get >/dev/null 2>&1; then
   echo "Installing required packages..."
   apt-get update
-  apt-get install -y php-cli php-common php-mbstring php-xml php-curl php-zip php-bcmath php-intl php-mysql php-sqlite3 unzip tmux nodejs npm composer
+  apt-get install -y php-cli php-common php-mbstring php-xml php-curl php-zip php-bcmath php-intl php-mysql php-sqlite3 unzip tmux nodejs npm composer git rsync curl
 fi
 
 printf '\nWeb Dashboard setup\n'
@@ -96,6 +96,9 @@ mkdir -p "${TUNNEL_DIR}" "${DATA_DIR}" "${LOG_DIR}"
 chmod 0700 "${CONFIG_DIR}" "${TUNNEL_DIR}"
 chmod 0755 "${DATA_DIR}" "${LOG_DIR}"
 
+mkdir -p "/usr/local/lib/${APP_NAME}"
+install -m 0755 "${SCRIPT_DIR}/scripts/update.sh" "/usr/local/lib/${APP_NAME}/update.sh"
+
 cat > /usr/local/bin/reyhanTunell-web-restart <<EOF
 #!/usr/bin/env bash
 set -e
@@ -108,6 +111,15 @@ if [[ "\${USER}" == root ]]; then tmux new-session -d -s "\${SESSION}" "cd '\${D
 echo "Web Dashboard restarted on port \${PORT}."
 EOF
 chmod 0755 /usr/local/bin/reyhanTunell-web-restart
+
+cat > "/etc/${APP_NAME}/install.env" <<EOF
+INSTALL_USER=${INSTALL_USER}
+INSTALL_DASHBOARD_DIR=${DASHBOARD_DIR}
+INSTALL_WEB_DASHBOARD_PORT=${WEB_DASHBOARD_PORT}
+INSTALL_DASHBOARD_SESSION=${DASHBOARD_SESSION}
+INSTALL_VERSION=$(${BINARY_PATH} version | sed -n 's/.*v//p' | tail -n1)
+EOF
+chmod 0600 "/etc/${APP_NAME}/install.env"
 
 if command -v systemctl >/dev/null 2>&1; then systemctl daemon-reload; fi
 
@@ -122,6 +134,7 @@ printf '%-20s %s\n' "Password" "${WEB_PASSWORD}"
 printf '%-20s %s\n' "WebBasePath" "${WEB_BASE_PATH}"
 printf '%-20s %s\n' "Dashboard URL" "http://127.0.0.1:${WEB_DASHBOARD_PORT}/${WEB_BASE_PATH}"
 echo
+echo "Update command: sudo reyhanTunell update"
 echo "Restart command: reyhanTunell-web-restart"
 echo "Attach: tmux attach -t ${DASHBOARD_SESSION}"
 "${BINARY_PATH}" version
