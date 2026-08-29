@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/ReyhanTeam/reyhanTunell/internal/api"
 	"github.com/ReyhanTeam/reyhanTunell/internal/core"
 	"github.com/ReyhanTeam/reyhanTunell/internal/providers/socks5"
 	"github.com/ReyhanTeam/reyhanTunell/internal/providers/ssh"
@@ -20,6 +21,15 @@ func Execute() {
 	switch os.Args[1] {
 	case "menu":
 		menu()
+
+	case "api":
+		address := api.DefaultAddress
+		if len(os.Args) >= 3 && strings.TrimSpace(os.Args[2]) != "" {
+			address = os.Args[2]
+		}
+		if err := api.Start(address); err != nil {
+			fmt.Println("Error:", err)
+		}
 
 	case "add":
 		runAdd()
