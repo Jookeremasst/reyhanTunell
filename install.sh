@@ -16,22 +16,16 @@ WEB_BASE_PATH=""
 WEB_USERNAME="admin"
 WEB_PASSWORD="admin"
 
-if [[ "${EUID}" -ne 0 ]]; then
-  echo "Error: installer must be run as root."
-  echo "Use: sudo ./install.sh"
-  exit 1
-fi
+if [[ "${EUID}" -ne 0 ]]; then echo "Error: installer must be run as root. Use: sudo ./install.sh"; exit 1; fi
 if [[ ! -f "${SCRIPT_DIR}/go.mod" ]]; then echo "Error: go.mod was not found."; exit 1; fi
 if [[ ! -f "${DASHBOARD_DIR}/composer.json" ]]; then echo "Error: Web Dashboard files were not found at ${DASHBOARD_DIR}."; exit 1; fi
 
 is_valid_port() { [[ "${1}" =~ ^[0-9]+$ ]] && (( ${1} >= 1024 && ${1} <= 65535 )); }
 is_port_in_use() { ss -ltnH 2>/dev/null | awk '{print $4}' | grep -Eq ":${1}$|:${1}[[:space:]]"; }
 random_base_path() {
-  local value=""
-  while [[ ${#value} -lt 15 ]]; do
-    value+="$(od -An -N64 -tu1 /dev/urandom | tr -cd '0-9')"
-  done
-  printf '%s\n' "${value:0:15}"
+  local charset='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789' value='' index
+  for ((index=0; index<15; index++)); do value+="${charset:$(shuf -i 0-61 -n 1):1}"; done
+  printf '%s\n' "${value}"
 }
 
 if ! command -v go >/dev/null 2>&1; then echo "Error: Go is not installed. Install Go and run this installer again."; exit 1; fi
