@@ -16,13 +16,23 @@ WEB_BASE_PATH=""
 WEB_USERNAME="admin"
 WEB_PASSWORD="admin"
 
-if [[ "${EUID}" -ne 0 ]]; then echo "Error: installer must be run as root. Use: sudo ./install.sh"; exit 1; fi
+if [[ "${EUID}" -ne 0 ]]; then
+  echo "Error: installer must be run as root."
+  echo "Use: sudo ./install.sh"
+  exit 1
+fi
 if [[ ! -f "${SCRIPT_DIR}/go.mod" ]]; then echo "Error: go.mod was not found."; exit 1; fi
 if [[ ! -f "${DASHBOARD_DIR}/composer.json" ]]; then echo "Error: Web Dashboard files were not found at ${DASHBOARD_DIR}."; exit 1; fi
 
 is_valid_port() { [[ "${1}" =~ ^[0-9]+$ ]] && (( ${1} >= 1024 && ${1} <= 65535 )); }
 is_port_in_use() { ss -ltnH 2>/dev/null | awk '{print $4}' | grep -Eq ":${1}$|:${1}[[:space:]]"; }
-random_base_path() { tr -dc 'a-z0-9' </dev/urandom | head -c 15; echo; }
+random_base_path() {
+  local value=""
+  while [[ ${#value} -lt 15 ]]; do
+    value+="$(od -An -N64 -tu1 /dev/urandom | tr -cd '0-9')"
+  done
+  printf '%s\n' "${value:0:15}"
+}
 
 if ! command -v go >/dev/null 2>&1; then echo "Error: Go is not installed. Install Go and run this installer again."; exit 1; fi
 INSTALL_USER="${SUDO_USER:-$(logname 2>/dev/null || echo root)}"
@@ -41,35 +51,34 @@ while true; do
   requested_port="${requested_port:-8000}"
   if ! is_valid_port "${requested_port}"; then echo "Error: enter a port number from 1024 to 65535."; continue; fi
   if is_port_in_use "${requested_port}"; then echo "Port ${requested_port} is already in use."; continue; fi
-  WEB_DASHBOARD_PORT="${requested_port}"; break
+  WEB_DASHBOARD_PORT="${requested_port}"
+  break
 done
 
 read -r -p "Web Dashboard Username [admin]: " requested_username
 WEB_USERNAME="${requested_username:-admin}"
 if [[ ! "${WEB_USERNAME}" =~ ^[A-Za-z0-9_.-]{3,64}$ ]]; then echo "Error: invalid username."; exit 1; fi
 
-while true; do
-  read -r -s -p "Web Dashboard Password [admin]: " requested_password
-  echo
-  WEB_PASSWORD="${requested_password:-admin}"
-  if [[ ${#WEB_PASSWORD} -lt 8 ]]; then echo "Error: password must be at least 8 characters."; continue; fi
-  break
-done
+read -r -s -p "Web Dashboard Password [admin]: " requested_password
+echo
+WEB_PASSWORD="${requested_password:-admin}"
 
 WEB_BASE_PATH="$(random_base_path)"
-while [[ ${#WEB_BASE_PATH} -ne 15 ]]; do WEB_BASE_PATH="$(random_base_path)"; done
 
 mkdir -p "${DASHBOARD_DIR}/bootstrap/cache" "${DASHBOARD_DIR}/storage/framework/cache" "${DASHBOARD_DIR}/storage/framework/sessions" "${DASHBOARD_DIR}/storage/framework/views" "${DASHBOARD_DIR}/storage/logs" "${DASHBOARD_DIR}/database"
 chown -R "${INSTALL_USER}:${INSTALL_USER}" "${DASHBOARD_DIR}"
-chmod -R ug+rwX "${DASHBOARD_DIR}/bootstrap/cache" "${DASHBOARD_DIR}/storage"
+chmod -R ug+rwX "${DASHBOARD_DIR}/bootstrap/cache" "${DASHBOARD_DIR}/storage" "${DASHBOARD_DIR}/database"
 
 cd "${DASHBOARD_DIR}"
 if [[ ! -f .env ]]; then cp .env.example .env; fi
-set_env() { if grep -q "^${1}=" .env; then sed -i "s#^${1}=.*#${1}=${2}#" .env; else echo "${1}=${2}" >> .env; fi; }
+set_env() {
+  local key="$1" value="$2"
+  if grep -q "^${key}=" .env; then sed -i "s#^${key}=.*#${key}=${value}#" .env; else printf '%s=%s\n' "${key}" "${value}" >> .env; fi
+}
 set_env REYHAN_WEB_PORT "${WEB_DASHBOARD_PORT}"
-set_env REYHAN_WEB_BASE_PATH "${WEB_BASE_PATH}"
-set_env REYHAN_WEB_USERNAME "${WEB_USERNAME}"
-set_env REYHAN_WEB_PASSWORD "${WEB_PASSWORD}"
+set_env WEB_BASE_PATH "${WEB_BASE_PATH}"
+set_env DASHBOARD_ADMIN_USERNAME "${WEB_USERNAME}"
+set_env DASHBOARD_ADMIN_PASSWORD "${WEB_PASSWORD}"
 
 run_as_user() { if [[ "${INSTALL_USER}" == root ]]; then "$@"; else runuser -u "${INSTALL_USER}" -- "$@"; fi; }
 run_as_user composer install --no-dev --optimize-autoloader --no-interaction
