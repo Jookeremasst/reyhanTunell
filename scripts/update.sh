@@ -30,16 +30,17 @@ remote_commit="$(git ls-remote "${REPO}" HEAD 2>/dev/null | awk '{print $1}')"
 echo "Installed version: v${current_version}"
 echo "GitHub commit:    ${remote_commit:0:12}"
 
-# Releases use semantic tags when available. Normal main-branch commits are also
-# updateable, so UI/code changes do not need a version bump for detection.
 latest_tag="$(git ls-remote --tags --refs "${REPO}" 2>/dev/null | awk -F/ '$3 ~ /^v?[0-9]+\\.[0-9]+\\.[0-9]+$/ {print $3}' | sed 's/^v//' | sort -V | tail -n1)"
 if [[ -n "${latest_tag}" ]]; then echo "Latest release:   v${latest_tag}"; fi
 
 if [[ -n "${installed_commit}" && "${installed_commit}" == "${remote_commit}" ]]; then
   echo "Already up to date."; exit 0
 fi
+
 if [[ -z "${installed_commit}" ]]; then
-  echo "No installed commit marker found. Run the installer once to enable safe commit-based updates."; exit 0
+  echo "No installed commit marker found. Migrating this installation and applying the current GitHub version..."
+else
+  echo "Update available."
 fi
 
 TMP_DIR="$(mktemp -d /tmp/${APP_NAME}-update.XXXXXX)"
@@ -49,7 +50,7 @@ cleanup() { rm -rf "${TMP_DIR}"; }
 trap cleanup EXIT
 mkdir -p "${BACKUP_DIR}"
 
-echo "Update available. Downloading GitHub main..."
+echo "Downloading GitHub main..."
 curl -fsSL "https://github.com/Jookeremasst/reyhanTunell/archive/refs/heads/main.tar.gz" -o "${TMP_DIR}/source.tar.gz"
 tar -xzf "${TMP_DIR}/source.tar.gz" -C "${TMP_DIR}"
 SOURCE_DIR="$(find "${TMP_DIR}" -mindepth 1 -maxdepth 1 -type d -name '${APP_NAME}-*' | head -n1)"
