@@ -19,8 +19,22 @@ if [[ ! -f "${SCRIPT_DIR}/go.mod" ]]; then
   echo "Error: go.mod was not found."
   exit 1
 fi
+
+# Install Go automatically if it is missing.
 if ! command -v go >/dev/null 2>&1; then
-  echo "Error: Go is not installed. Install Go and run this installer again."
+  if command -v apt-get >/dev/null 2>&1; then
+    echo "Go is not installed. Installing Go..."
+    apt-get update
+    apt-get install -y golang-go
+  else
+    echo "Error: Go is not installed and apt-get is not available."
+    echo "Install Go manually and run this installer again."
+    exit 1
+  fi
+fi
+
+if ! command -v go >/dev/null 2>&1; then
+  echo "Error: Go installation failed or the go command is not available."
   exit 1
 fi
 
