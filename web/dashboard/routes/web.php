@@ -6,14 +6,16 @@ use Illuminate\Support\Facades\Route;
 
 $webBasePath = trim((string) env('WEB_BASE_PATH', ''), '/');
 
-Route::prefix($webBasePath)->group(function () {
-    Route::middleware('guest')->group(function () {
-        Route::get('/login', [LoginController::class, 'create'])->name('login');
-        Route::post('/login', [LoginController::class, 'store'])->middleware('throttle:6,1')->name('login.store');
-    });
+if ($webBasePath !== '') {
+    Route::prefix($webBasePath)->group(function () {
+        Route::middleware('guest')->group(function () {
+            Route::get('/login', [LoginController::class, 'create'])->name('login');
+            Route::post('/login', [LoginController::class, 'store'])->middleware('throttle:6,1')->name('login.store');
+        });
 
-    Route::middleware('auth')->group(function () {
-        Route::post('/logout', [LoginController::class, 'destroy'])->name('logout');
-        Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
+        Route::middleware('auth')->group(function () {
+            Route::post('/logout', [LoginController::class, 'destroy'])->name('logout');
+            Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
+        });
     });
-});
+}
