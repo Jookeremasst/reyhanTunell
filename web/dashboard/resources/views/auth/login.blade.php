@@ -23,8 +23,8 @@
             <form method="POST" action="{{ route('login.store') }}" class="space-y-5">
                 @csrf
                 <div>
-                    <label for="email" class="mb-2 block text-sm font-medium">Email</label>
-                    <input id="email" name="email" type="email" value="{{ old('email') }}" required autofocus autocomplete="username"
+                    <label for="username" class="mb-2 block text-sm font-medium">Username</label>
+                    <input id="username" name="username" type="text" value="{{ old('username') }}" required autofocus autocomplete="username"
                            class="w-full rounded-lg border border-white/10 bg-slate-800 px-4 py-3 outline-none focus:border-indigo-400">
                 </div>
 
