@@ -10,22 +10,15 @@ STATE_FILE="${CONFIG_DIR}/install.env"
 API_SERVICE="${APP_NAME}.service"
 
 if [[ "${EUID}" -ne 0 ]]; then
-  echo "Error: update must be run as root. Use: sudo reyhanTunell update"
+  echo "Error: update must be run as root. Use: sudo ${APP_NAME} update"
   exit 1
 fi
 
-[[ -x "${BINARY_PATH}" ]] || { echo "Error: installed reyhanTunell binary was not found."; exit 1; }
-[[ -f "${STATE_FILE}" ]] || { echo "Error: installation state was not found at ${STATE_FILE}. Run the installer once."; exit 1; }
+[[ -x "${BINARY_PATH}" ]] || { echo "Error: installed ${APP_NAME} binary was not found."; exit 1; }
+[[ -f "${STATE_FILE}" ]] || { echo "Error: installation state was not found. Run the installer once."; exit 1; }
 source "${STATE_FILE}"
 
-DASHBOARD_DIR="${INSTALL_DASHBOARD_DIR:-}"
-WEB_DASHBOARD_PORT="${INSTALL_WEB_DASHBOARD_PORT:-8000}"
-DASHBOARD_SESSION="${INSTALL_DASHBOARD_SESSION:-${APP_NAME}-web}"
-INSTALL_USER="${INSTALL_USER:-root}"
-
-[[ -n "${DASHBOARD_DIR}" ]] || { echo "Error: dashboard installation path is not recorded."; exit 1; }
-
-for cmd in git curl tar go rsync php composer; do
+for cmd in git curl tar go rsync systemctl; do
   command -v "${cmd}" >/dev/null 2>&1 || { echo "Error: ${cmd} is required."; exit 1; }
 done
 
@@ -64,12 +57,7 @@ cleanup() { rm -rf "${TMP_DIR}"; }
 trap cleanup EXIT
 mkdir -p "${BACKUP_DIR}"
 
-tar -czf "${BACKUP_FILE}" \
-  -C / \
-  "etc/${APP_NAME}" \
-  "var/lib/${APP_NAME}" \
-  "var/log/${APP_NAME}" \
-  2>/dev/null || true
+tar -czf "${BACKUP_FILE}" -C / "etc/${APP_NAME}" "var/lib/${APP_NAME}" "var/log/${APP_NAME}" 2>/dev/null || true
 chmod 0600 "${BACKUP_FILE}"
 
 ARCHIVE_URL="https://github.com/Jookeremasst/reyhanTunell/archive/refs/heads/main.tar.gz"
@@ -83,98 +71,27 @@ tar -xzf "${TMP_DIR}/source.tar.gz" -C "${TMP_DIR}"
 SOURCE_DIR="$(find "${TMP_DIR}" -mindepth 1 -maxdepth 1 -type d -name '${APP_NAME}-*' | head -n1)"
 [[ -n "${SOURCE_DIR}" && -f "${SOURCE_DIR}/go.mod" ]] || { echo "Error: invalid update archive."; exit 1; }
 
-LIVE_ENV="${DASHBOARD_DIR}/.env"
-if [[ -f "${LIVE_ENV}" ]]; then
-  cp "${LIVE_ENV}" "${SOURCE_DIR}/web/dashboard/.env"
-fi
-
-LIVE_SQLITE=""
-if [[ -f "${DASHBOARD_DIR}/database/database.sqlite" ]]; then
-  LIVE_SQLITE="${DASHBOARD_DIR}/database/database.sqlite"
-  cp "${LIVE_SQLITE}" "${SOURCE_DIR}/web/dashboard/database/database.sqlite"
-fi
-
-if [[ -f "${SOURCE_DIR}/web/dashboard/composer.json" ]]; then
-  echo "Updating Web Dashboard dependencies..."
-  cd "${SOURCE_DIR}/web/dashboard"
-  mkdir -p bootstrap/cache storage/framework/cache storage/framework/sessions storage/framework/views storage/logs
-  composer install --no-dev --optimize-autoloader --no-interaction
-  php artisan migrate --force --no-interaction
-
-  if command -v npm >/dev/null 2>&1 && [[ -f package.json ]]; then
-    npm install --no-audit --no-fund
-    npm run build
-  fi
-fi
-
 cd "${SOURCE_DIR}"
 NEW_BINARY="${TMP_DIR}/${APP_NAME}.new"
 echo "Building new ${APP_NAME} binary..."
 go build -trimpath -ldflags "-s -w" -o "${NEW_BINARY}" .
 "${NEW_BINARY}" version
 
-# Stop only the web dashboard. Tunnel services and /etc/reyhanTunell/tunnels are untouched.
-if tmux has-session -t "${DASHBOARD_SESSION}" 2>/dev/null; then
-  tmux kill-session -t "${DASHBOARD_SESSION}" || true
-fi
-
-# Replace only application source. Persistent runtime data stays outside this tree.
-echo "Installing updated Web Dashboard..."
-mkdir -p "${DASHBOARD_DIR}"
-rsync -a --delete \
-  --exclude '.env' \
-  --exclude 'vendor/' \
-  --exclude 'node_modules/' \
-  --exclude 'public/build/' \
-  --exclude 'storage/' \
-  --exclude 'database/*.sqlite' \
-  "${SOURCE_DIR}/web/dashboard/" "${DASHBOARD_DIR}/"
-
-cd "${DASHBOARD_DIR}"
-composer install --no-dev --optimize-autoloader --no-interaction
-if command -v npm >/dev/null 2>&1 && [[ -f package.json ]]; then
-  npm install --no-audit --no-fund
-  npm run build
-fi
-php artisan migrate --force --no-interaction
-
-if [[ -f "${LIVE_ENV}" ]]; then
-  cp "${LIVE_ENV}" "${DASHBOARD_DIR}/.env"
-fi
-if [[ -n "${LIVE_SQLITE}" && -f "${LIVE_SQLITE}" ]]; then
-  cp "${LIVE_SQLITE}" "${DASHBOARD_DIR}/database/database.sqlite"
-fi
-
-if id "${INSTALL_USER}" >/dev/null 2>&1; then
-  chown -R "${INSTALL_USER}:${INSTALL_USER}" "${DASHBOARD_DIR}"
-fi
-chmod -R ug+rwX "${DASHBOARD_DIR}/bootstrap/cache" "${DASHBOARD_DIR}/storage" "${DASHBOARD_DIR}/database" 2>/dev/null || true
-
-# Replace the core binary only after the dashboard update is ready.
+# Replace only the application binary and updater. Tunnel configuration is untouched.
 install -m 0755 "${NEW_BINARY}" "${BINARY_PATH}.new"
 mv -f "${BINARY_PATH}.new" "${BINARY_PATH}"
+install -m 0755 "${SOURCE_DIR}/scripts/update.sh" "/usr/local/lib/${APP_NAME}/update.sh"
 
-# The API runs as its own systemd service. Restarting it loads the new binary.
-# No tunnel service is restarted, stopped, or modified here.
-if systemctl list-unit-files "${API_SERVICE}" >/dev/null 2>&1; then
-  systemctl daemon-reload
-  systemctl restart "${API_SERVICE}"
-  if ! systemctl is-active --quiet "${API_SERVICE}"; then
-    echo "Error: ${APP_NAME} Core API failed after update."
-    systemctl --no-pager --full status "${API_SERVICE}" || true
-    exit 1
-  fi
-fi
-
-if [[ -x /usr/local/bin/reyhanTunell-web-restart ]]; then
-  /usr/local/bin/reyhanTunell-web-restart
+# Restart only the core API. Individual tunnel services are not restarted.
+systemctl daemon-reload
+systemctl restart "${API_SERVICE}"
+if ! systemctl is-active --quiet "${API_SERVICE}"; then
+  echo "Error: ${APP_NAME} service failed after update."
+  systemctl --no-pager --full status "${API_SERVICE}" || true
+  exit 1
 fi
 
 cat > "${STATE_FILE}.tmp" <<EOF
-INSTALL_USER=${INSTALL_USER}
-INSTALL_DASHBOARD_DIR=${DASHBOARD_DIR}
-INSTALL_WEB_DASHBOARD_PORT=${WEB_DASHBOARD_PORT}
-INSTALL_DASHBOARD_SESSION=${DASHBOARD_SESSION}
 INSTALL_API_ADDRESS=${INSTALL_API_ADDRESS:-127.0.0.1:8765}
 INSTALL_VERSION=$("${BINARY_PATH}" version | sed -n 's/.*v//p' | tail -n1)
 INSTALL_COMMIT=${remote_commit}
@@ -187,6 +104,6 @@ echo "Update completed successfully."
 echo "Previous version: v${current_version}"
 echo "Current version: $("${BINARY_PATH}" version | tail -n1)"
 echo "Commit: ${remote_commit:0:12}"
-echo "Web Dashboard and Core API updated from the same project source."
-echo "Tunnel configurations were preserved."
+echo "Core application updated."
+echo "Tunnel configurations and tunnel services were not changed."
 echo "Backup: ${BACKUP_FILE}"
