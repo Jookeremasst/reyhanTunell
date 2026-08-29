@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\TunnelController;
 use Illuminate\Support\Facades\Route;
 
 $webBasePath = trim((string) env('WEB_BASE_PATH', ''), '/');
@@ -16,6 +17,7 @@ if ($webBasePath !== '') {
         Route::middleware('auth')->group(function () {
             Route::post('/logout', [LoginController::class, 'destroy'])->name('logout');
             Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
+            Route::get('/tunnels', [TunnelController::class, 'index'])->name('tunnels.index');
         });
     });
 }
