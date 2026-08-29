@@ -112,12 +112,26 @@ echo "Web Dashboard restarted on port \${PORT}."
 EOF
 chmod 0755 /usr/local/bin/reyhanTunell-web-restart
 
+# Record the exact source commit used by this installation. This marker is
+# metadata only; tunnel configuration remains under /etc/reyhanTunell/tunnels.
+INSTALL_COMMIT=""
+if command -v git >/dev/null 2>&1 && git -C "${SCRIPT_DIR}" rev-parse --verify HEAD >/dev/null 2>&1; then
+  INSTALL_COMMIT="$(git -C "${SCRIPT_DIR}" rev-parse HEAD)"
+fi
+if [[ -z "${INSTALL_COMMIT}" ]]; then
+  INSTALL_COMMIT="$(git ls-remote https://github.com/Jookeremasst/reyhanTunell.git HEAD 2>/dev/null | awk '{print $1}')"
+fi
+if [[ -z "${INSTALL_COMMIT}" ]]; then
+  echo "Warning: could not record GitHub commit marker. Updates can migrate it on first update."
+fi
+
 cat > "/etc/${APP_NAME}/install.env" <<EOF
 INSTALL_USER=${INSTALL_USER}
 INSTALL_DASHBOARD_DIR=${DASHBOARD_DIR}
 INSTALL_WEB_DASHBOARD_PORT=${WEB_DASHBOARD_PORT}
 INSTALL_DASHBOARD_SESSION=${DASHBOARD_SESSION}
 INSTALL_VERSION=$(${BINARY_PATH} version | sed -n 's/.*v//p' | tail -n1)
+INSTALL_COMMIT=${INSTALL_COMMIT}
 EOF
 chmod 0600 "/etc/${APP_NAME}/install.env"
 
