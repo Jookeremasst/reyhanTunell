@@ -18,6 +18,8 @@ if ($webBasePath !== '') {
             Route::post('/logout', [LoginController::class, 'destroy'])->name('logout');
             Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
             Route::get('/tunnels', [TunnelController::class, 'index'])->name('tunnels.index');
+            Route::get('/tunnels/create', [TunnelController::class, 'create'])->name('tunnels.create');
+            Route::post('/tunnels', [TunnelController::class, 'store'])->name('tunnels.store');
         });
     });
 }
